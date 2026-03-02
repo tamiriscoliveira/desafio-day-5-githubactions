@@ -1,46 +1,76 @@
-name: Desafio Day-5
+name: Desafio dia 5
 
 on:
   workflow_dispatch:
 
 jobs:
+
   lint:
-    name: 🔍 Lint
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
 
     steps:
-      - name: 📥 Checkout do código
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
 
-      - name: 📦 Instalar dependências
-        run: npm ci
+      - run: npm ci
+      - run: npm run lint
 
-      - name: 🚨 Executar ESLint
-        run: npm run lint
-
-  test:
-    name: 🧪 Testes
+  unit:
+    needs: lint
     runs-on: ubuntu-latest
-    needs: lint  # 👈 Garante que só roda se o lint passar
+    defaults:
+      run:
+        working-directory: app
+
+    outputs:
+      coverage: ${{ steps.coverage.outputs.coverage }}
 
     steps:
-      - name: 📥 Checkout do código
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'npm'
 
-      - name: 📦 Instalar dependências
-        run: npm install --save-dev --ignore-scripts 
+      - run: npm ci
 
-      - name: 🧪 Executar testes com Jest
-        run: npm test
+      - name: Run tests
+        run: npm test -- --coverage
+
+      - name: Get coverage
+        id: coverage
+        run: |
+          RESULT=$(jq '.total.lines.pct' coverage/coverage-summary.json)
+          echo "coverage=$RESULT" >> "$GITHUB_OUTPUT"
+
+  docker:
+    needs: unit
+    if: ${{ needs.unit.outputs.coverage >= 80 }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        run: |
+          image="ghcr.io/${{ github.repository }}/teste_de_senha:${GITHUB_SHA}"
+          docker build -t "$image" ./app
+          docker push "$image"
