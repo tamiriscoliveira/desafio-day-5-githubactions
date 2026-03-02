@@ -40,7 +40,7 @@ jobs:
           cache: 'npm'
 
       - name: 📦 Instalar dependências
-        run: npm install
+        run: npm install --save-dev --ignore-scripts 
 
       - name: 🧪 Executar testes com Jest
         run: npm test
